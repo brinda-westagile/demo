@@ -35,16 +35,14 @@ describe('user test cases', function () {
         });
     })
 
-    it('create user', async () => {
+    it('create user - check validations ', async () => {
         let createData = {
             firstName: faker.name.firstName(),
             lastName: faker.name.lastName(),
             email: faker.internet.email(),
-            roleId: 2,
-
         }
         const res = await chai.request(server).post(`api/user`).send(createData).end((err, res) => {
-            res.should.have.status(200);
+            res.should.have.status(422);
             res.body.should.be.a('array');
             done();
         });
@@ -60,6 +58,19 @@ describe('user test cases', function () {
         }
         const res = await chai.request(server).put(`api/user`).send(editData).end((err, res) => {
             res.should.have.status(200);
+            res.body.should.be.a('array');
+            done();
+        });
+    })
+    it('update user - check validations ', async () => {
+        let editData = {
+            firstName: faker.name.firstName(),
+            lastName: faker.name.lastName(),
+            roleId: 2,
+            userId: 3
+        }
+        const res = await chai.request(server).put(`api/user`).send(editData).end((err, res) => {
+            res.should.have.status(422);
             res.body.should.be.a('array');
             done();
         });
