@@ -2,7 +2,8 @@ const models = require('../../models');
 const bcrypt = require('bcrypt');
 const Bull = require('bull')
 const Joi = require('joi');
-const Enjoi = require('enjoi');
+const Sequelize = require('sequelize')
+const Op = Sequelize.Op
 
 async function listOfUsers (req, res, next) {
     try {
@@ -45,7 +46,7 @@ async function listOfUser(req, res, next) {
 async function createUser(req, res, next) {
     try {
         const reqBody = req.body;
-        let schema = schemaForCreate();
+        let schema = await schemaForCreate();
         let u = {
             firstName: reqBody.firstName,
             lastName: reqBody.lastName,
@@ -53,7 +54,17 @@ async function createUser(req, res, next) {
             roleId: reqBody.roleId
         }
         const { error, value } = schema.validate(u);
-        console.log(error,'error');
+        if(error){
+            return res.status(422).send({
+                message: (error.details.length) ? error.details[0].message : 'Unprocessable entity'
+            })
+        }
+        let checkIfEmailExits = await checkEmailId({email: reqBody.email, type: 'create'});
+        if(checkIfEmailExits){
+             return res.status(422).send({
+                message: 'Email is already Exists.'
+            })
+        }
         users = await models.User.create(u);
         const myFirstQueue1 = new Bull('my-first-queue1');
         const job = await myFirstQueue1.add({foo: 'bar'});
@@ -71,15 +82,37 @@ async function createUser(req, res, next) {
 async function updateUser(req, res, next) {
     try {
         const reqBody = req.body;
-        let instance = await models.User.findOne({
-            where: { id: reqBody.userId }
-        });
+        let schema = await schemaForCreate('edit');
         let u = {
             firstName: reqBody.firstName,
             lastName: reqBody.lastName,
             email: reqBody.email,
-            roleId: reqBody.roleId
+            roleId: reqBody.roleId,
+            userId: reqBody.userId
         }
+        const { error, value } = schema.validate(u);
+        if(error){
+            return res.status(422).send({
+                message: (error.details.length) ? error.details[0].message : 'Unprocessable entity'
+            })
+        }
+
+        let checkIfEmailExits = await checkEmailId({email: reqBody.email, type: 'edit', id: reqBody.userId});
+        if(checkIfEmailExits){
+             return res.status(422).send({
+                message: 'Email is already Exists.'
+            })
+        }
+        let instance = await models.User.findOne({
+            where: { id: reqBody.userId }
+        });
+
+        if(!instance){
+            return res.status(422).send({
+                message: 'Unprocessable entity'
+            })
+        }
+
         instance.set(u)
         instance = await instance.save()
         res.status(200).send({
@@ -113,15 +146,34 @@ async function createPassword(id){
         });
     });
 }
-async function schemaForCreate(){
-    let schema = Joi.object({
-        firstName: Joi.string().required(),
+async function schemaForCreate(type = 'create'){
+    let object  = {
+        firstName: Joi.required(),
         lastName: Joi.string().required(),
-        email: Joi.string().email({ minDomainSegments: 2, tlds: { allow: ['com', 'net'] } }),
-        roleId: Joi.integer().required().min(1).max(2)
-    })
-    joiSchema = Enjoi.schema(schema);
-    return joiSchema;
+        email: Joi.string().required().email({ minDomainSegments: 2, tlds: { allow: ['com', 'net'] } }),
+        roleId: Joi.number().integer().required().min(1).max(2)
+    };
+    if(type == 'edit'){
+        object.userId  = Joi.number().integer().required();
+    }
+    let schema = Joi.object(object);
+    return schema;
+}
+
+async function checkEmailId(data){
+    let checkObject = { email: data.email };
+     if(data.type == 'edit' ){
+        checkObject.id = {
+            [Op.not]: data.id
+        }
+    }
+    let instance = await models.User.findOne({
+        where: checkObject
+    });
+    if(instance){
+        return true;
+    }
+    return false;
 }
 
 module.exports = {
